@@ -1,4 +1,29 @@
-//! Contract Functions Output types.
+//! Mapping of rust types to [`Token`](ethabi::Token) for easier calling of solidity functions from
+//! rust.
+//!
+//! `SingleTokenize` is implemented for types that map to a single `Token`. For example leaf types
+//! like `i32` and `String` or compound types of leaf types like `[i32]` and `(i32, i32)`.
+//!
+//! `Tokenize` is implemented for tuples of `Tokenize`. These tuples represent a group of arguments
+//! or return types that are used for when ethabi's encode and decode functions work with
+//! `Vec<Token>`.
+//!
+//! ```
+//! use ethabi::Token;
+//! use web3::contract::tokens::{MultiTokenize, SingleTokenize};
+//!
+//! // We have a rust tuple
+//! let tuple = (false, true);
+//! // and the equivalent tokens.
+//! let tokens = vec![Token::Bool(false), Token::Bool(true)];
+//!
+//! // When treating the tuple as a single a token it becomes `Token::Tuple`
+//! assert_eq!(tuple.into_token(), Token::Tuple(tokens.clone()));
+//! // and when treating it as a collection of arguments it becomes a vector of two bool tokens.
+//! assert_eq!(tuple.into_tokens(), tokens.clone());
+//! // If we wanted to treat it as a single tuple argument we would wrap it in another tuple.
+//! assert_eq!((tuple,).into_tokens(), vec![Token::Tuple(tokens.clone())]);
+//! ```
 
 use crate::{
     contract::error::Error,
@@ -7,136 +32,17 @@ use crate::{
 use arrayvec::ArrayVec;
 use ethabi::Token;
 
-/// Output type possible to deserialize from Contract ABI
-pub trait Detokenize {
-    /// Creates a new instance from parsed ABI tokens.
-    fn from_tokens(tokens: Vec<Token>) -> Result<Self, Error>
-    where
-        Self: Sized;
-}
-
-impl<T: Tokenizable> Detokenize for T {
-    fn from_tokens(mut tokens: Vec<Token>) -> Result<Self, Error> {
-        if tokens.len() != 1 {
-            Err(Error::InvalidOutputType(format!(
-                "Expected single element, got a list: {:?}",
-                tokens
-            )))
-        } else {
-            Self::from_token(tokens.drain(..).next().expect("At least one element in vector; qed"))
-        }
-    }
-}
-
-macro_rules! impl_output {
-  ($num: expr, $( $ty: ident , )+) => {
-    impl<$($ty, )+> Detokenize for ($($ty,)+) where
-      $(
-        $ty: Tokenizable,
-      )+
-    {
-      fn from_tokens(mut tokens: Vec<Token>) -> Result<Self, Error> {
-        if tokens.len() != $num {
-          return Err(Error::InvalidOutputType(format!(
-            "Expected {} elements, got a list of {}: {:?}",
-            $num,
-            tokens.len(),
-            tokens
-          )));
-        }
-        let mut it = tokens.drain(..);
-        Ok(($(
-          $ty::from_token(it.next().expect("All elements are in vector; qed"))?,
-        )+))
-      }
-    }
-  }
-}
-
-impl_output!(1, A,);
-impl_output!(2, A, B,);
-impl_output!(3, A, B, C,);
-impl_output!(4, A, B, C, D,);
-impl_output!(5, A, B, C, D, E,);
-impl_output!(6, A, B, C, D, E, F,);
-impl_output!(7, A, B, C, D, E, F, G,);
-impl_output!(8, A, B, C, D, E, F, G, H,);
-impl_output!(9, A, B, C, D, E, F, G, H, I,);
-impl_output!(10, A, B, C, D, E, F, G, H, I, J,);
-impl_output!(11, A, B, C, D, E, F, G, H, I, J, K,);
-impl_output!(12, A, B, C, D, E, F, G, H, I, J, K, L,);
-impl_output!(13, A, B, C, D, E, F, G, H, I, J, K, L, M,);
-impl_output!(14, A, B, C, D, E, F, G, H, I, J, K, L, M, N,);
-impl_output!(15, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,);
-impl_output!(16, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P,);
-/// Tokens conversion trait
-pub trait Tokenize {
-    /// Convert to list of tokens
-    fn into_tokens(self) -> Vec<Token>;
-}
-
-impl<'a> Tokenize for &'a [Token] {
-    fn into_tokens(self) -> Vec<Token> {
-        self.to_vec()
-    }
-}
-
-impl<T: Tokenizable> Tokenize for T {
-    fn into_tokens(self) -> Vec<Token> {
-        vec![self.into_token()]
-    }
-}
-
-impl Tokenize for () {
-    fn into_tokens(self) -> Vec<Token> {
-        vec![]
-    }
-}
-
-macro_rules! impl_tokens {
-  ($( $ty: ident : $no: tt, )+) => {
-    impl<$($ty, )+> Tokenize for ($($ty,)+) where
-      $(
-        $ty: Tokenizable,
-      )+
-    {
-      fn into_tokens(self) -> Vec<Token> {
-        vec![
-          $( self.$no.into_token(), )+
-        ]
-      }
-    }
-  }
-}
-
-impl_tokens!(A:0, );
-impl_tokens!(A:0, B:1, );
-impl_tokens!(A:0, B:1, C:2, );
-impl_tokens!(A:0, B:1, C:2, D:3, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, O:14, );
-impl_tokens!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, O:14, P:15, );
-
-/// Simplified output type for single value.
-pub trait Tokenizable {
-    /// Converts a `Token` into expected type.
+/// Tokenization to and from a single token.
+pub trait SingleTokenize {
+    /// Convert Token into Self.
     fn from_token(token: Token) -> Result<Self, Error>
     where
         Self: Sized;
-    /// Converts a specified type back into token.
+    /// Convert Self into Token.
     fn into_token(self) -> Token;
 }
 
-impl Tokenizable for Token {
+impl SingleTokenize for Token {
     fn from_token(token: Token) -> Result<Self, Error> {
         Ok(token)
     }
@@ -145,7 +51,7 @@ impl Tokenizable for Token {
     }
 }
 
-impl Tokenizable for String {
+impl SingleTokenize for String {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::String(s) => Ok(s),
@@ -158,7 +64,7 @@ impl Tokenizable for String {
     }
 }
 
-impl Tokenizable for Bytes {
+impl SingleTokenize for Bytes {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::Bytes(s) => Ok(s.into()),
@@ -171,7 +77,7 @@ impl Tokenizable for Bytes {
     }
 }
 
-impl Tokenizable for H256 {
+impl SingleTokenize for H256 {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::FixedBytes(mut s) => {
@@ -193,7 +99,7 @@ impl Tokenizable for H256 {
     }
 }
 
-impl Tokenizable for Address {
+impl SingleTokenize for Address {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::Address(data) => Ok(data),
@@ -208,7 +114,7 @@ impl Tokenizable for Address {
 
 macro_rules! eth_uint_tokenizable {
     ($uint: ident, $name: expr) => {
-        impl Tokenizable for $uint {
+        impl SingleTokenize for $uint {
             fn from_token(token: Token) -> Result<Self, Error> {
                 match token {
                     Token::Int(data) | Token::Uint(data) => Ok(::std::convert::TryInto::try_into(data).unwrap()),
@@ -228,7 +134,7 @@ eth_uint_tokenizable!(U128, "U128");
 
 macro_rules! int_tokenizable {
     ($int: ident, $token: ident) => {
-        impl Tokenizable for $int {
+        impl SingleTokenize for $int {
             fn from_token(token: Token) -> Result<Self, Error> {
                 match token {
                     Token::Int(data) | Token::Uint(data) => Ok(data.low_u128() as _),
@@ -268,7 +174,7 @@ int_tokenizable!(u32, Uint);
 int_tokenizable!(u64, Uint);
 int_tokenizable!(u128, Uint);
 
-impl Tokenizable for bool {
+impl SingleTokenize for bool {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::Bool(data) => Ok(data),
@@ -280,9 +186,55 @@ impl Tokenizable for bool {
     }
 }
 
-/// Marker trait for `Tokenizable` types that are can tokenized to and from a
+macro_rules! impl_single_tokenize {
+    ($count: expr, $( $ty: ident : $no: tt, )*) => {
+        impl<$($ty, )*> SingleTokenize for ($($ty,)*)
+        where
+            $($ty: SingleTokenize,)*
+        {
+            fn from_token(token: Token) -> Result<Self, Error>
+            {
+                let mut tokens = match token {
+                    Token::Tuple(tokens) => tokens,
+                    _ => return Err(Error::InvalidOutputType(format!("expected tuple"))),
+                };
+                if tokens.len() != $count {
+                    return Err(Error::InvalidOutputType(format!("expected tuple of size {} but got {}", $count, tokens.len())));
+                }
+                #[allow(unused_variables)]
+                #[allow(unused_mut)]
+                let mut drain = tokens.drain(..);
+                Ok(($($ty::from_token(drain.next().unwrap())?,)*))
+            }
+
+            fn into_token(self) -> Token {
+                Token::Tuple(vec![$(self.$no.into_token(),)*])
+            }
+        }
+    }
+}
+
+impl_single_tokenize!(0,);
+impl_single_tokenize!(1, A:0, );
+impl_single_tokenize!(2, A:0, B:1, );
+impl_single_tokenize!(3, A:0, B:1, C:2, );
+impl_single_tokenize!(4, A:0, B:1, C:2, D:3, );
+impl_single_tokenize!(5, A:0, B:1, C:2, D:3, E:4, );
+impl_single_tokenize!(6, A:0, B:1, C:2, D:3, E:4, F:5, );
+impl_single_tokenize!(7, A:0, B:1, C:2, D:3, E:4, F:5, G:6, );
+impl_single_tokenize!(8, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, );
+impl_single_tokenize!(9, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, );
+impl_single_tokenize!(10, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, );
+impl_single_tokenize!(11, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, );
+impl_single_tokenize!(12, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, );
+impl_single_tokenize!(13, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, );
+impl_single_tokenize!(14, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, );
+impl_single_tokenize!(15, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, O:14, );
+impl_single_tokenize!(16, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, O:14, P:15, );
+
+/// Marker trait for `Tokenize` types that can be tokenized to and from a
 /// `Token::Array` and `Token:FixedArray`.
-pub trait TokenizableItem: Tokenizable {}
+pub trait TokenizableItem: SingleTokenize {}
 
 macro_rules! tokenizable_item {
     ($($type: ty,)*) => {
@@ -297,13 +249,13 @@ tokenizable_item! {
     i8, i16, i32, i64, i128, u16, u32, u64, u128,
 }
 
-impl Tokenizable for BytesArray {
+impl SingleTokenize for BytesArray {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::FixedArray(tokens) | Token::Array(tokens) => {
                 let bytes = tokens
                     .into_iter()
-                    .map(Tokenizable::from_token)
+                    .map(SingleTokenize::from_token)
                     .collect::<Result<Vec<u8>, Error>>()?;
                 Ok(Self(bytes))
             }
@@ -312,11 +264,11 @@ impl Tokenizable for BytesArray {
     }
 
     fn into_token(self) -> Token {
-        Token::Array(self.0.into_iter().map(Tokenizable::into_token).collect())
+        Token::Array(self.0.into_iter().map(SingleTokenize::into_token).collect())
     }
 }
 
-impl Tokenizable for Vec<u8> {
+impl SingleTokenize for Vec<u8> {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::Bytes(data) => Ok(data),
@@ -329,18 +281,18 @@ impl Tokenizable for Vec<u8> {
     }
 }
 
-impl<T: TokenizableItem> Tokenizable for Vec<T> {
+impl<T: TokenizableItem> SingleTokenize for Vec<T> {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::FixedArray(tokens) | Token::Array(tokens) => {
-                tokens.into_iter().map(Tokenizable::from_token).collect()
+                tokens.into_iter().map(SingleTokenize::from_token).collect()
             }
             other => Err(Error::InvalidOutputType(format!("Expected `Array`, got {:?}", other))),
         }
     }
 
     fn into_token(self) -> Token {
-        Token::Array(self.into_iter().map(Tokenizable::into_token).collect())
+        Token::Array(self.into_iter().map(SingleTokenize::into_token).collect())
     }
 }
 
@@ -348,7 +300,7 @@ impl<T: TokenizableItem> TokenizableItem for Vec<T> {}
 
 macro_rules! impl_fixed_types {
     ($num: expr) => {
-        impl Tokenizable for [u8; $num] {
+        impl SingleTokenize for [u8; $num] {
             fn from_token(token: Token) -> Result<Self, Error> {
                 match token {
                     Token::FixedBytes(bytes) => {
@@ -377,7 +329,7 @@ macro_rules! impl_fixed_types {
 
         impl TokenizableItem for [u8; $num] {}
 
-        impl<T: TokenizableItem + Clone> Tokenizable for [T; $num] {
+        impl<T: TokenizableItem + Clone> SingleTokenize for [T; $num] {
             fn from_token(token: Token) -> Result<Self, Error> {
                 match token {
                     Token::FixedArray(tokens) => {
@@ -438,43 +390,125 @@ impl_fixed_types!(256);
 impl_fixed_types!(512);
 impl_fixed_types!(1024);
 
+/// Tokenization to and from multiple tokens used for function arguments and return values.
+pub trait MultiTokenize {
+    /// Convert Tokens into Self.
+    fn from_tokens(tokens: Vec<Token>) -> Result<Self, Error>
+    where
+        Self: Sized;
+    /// Convert Self into Tokens
+    fn into_tokens(self) -> Vec<Token>;
+}
+
+macro_rules! impl_multi_tokenize {
+    ($count: expr, $( $ty: ident : $no: tt, )*) => {
+        impl<$($ty, )*> MultiTokenize for ($($ty,)*)
+        where
+            $($ty: SingleTokenize,)*
+        {
+            fn from_tokens(mut tokens: Vec<Token>) -> Result<Self, Error>
+            {
+                if tokens.len() != $count {
+                    return Err(Error::InvalidOutputType(format!("expected {} tokens but got {}", $count, tokens.len())));
+                }
+                #[allow(unused_variables)]
+                #[allow(unused_mut)]
+                let mut drain = tokens.drain(..);
+                Ok(($($ty::from_token(drain.next().unwrap())?,)*))
+            }
+
+            fn into_tokens(self) -> Vec<Token> {
+                vec![$(self.$no.into_token(),)*]
+            }
+        }
+    }
+}
+
+impl_multi_tokenize!(0,);
+impl_multi_tokenize!(1, A:0, );
+impl_multi_tokenize!(2, A:0, B:1, );
+impl_multi_tokenize!(3, A:0, B:1, C:2, );
+impl_multi_tokenize!(4, A:0, B:1, C:2, D:3, );
+impl_multi_tokenize!(5, A:0, B:1, C:2, D:3, E:4, );
+impl_multi_tokenize!(6, A:0, B:1, C:2, D:3, E:4, F:5, );
+impl_multi_tokenize!(7, A:0, B:1, C:2, D:3, E:4, F:5, G:6, );
+impl_multi_tokenize!(8, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, );
+impl_multi_tokenize!(9, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, );
+impl_multi_tokenize!(10, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, );
+impl_multi_tokenize!(11, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, );
+impl_multi_tokenize!(12, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, );
+impl_multi_tokenize!(13, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, );
+impl_multi_tokenize!(14, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, );
+impl_multi_tokenize!(15, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, O:14, );
+impl_multi_tokenize!(16, A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11, M:12, N:13, O:14, P:15, );
+
+impl MultiTokenize for Vec<Token> {
+    fn from_tokens(tokens: Vec<Token>) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        Ok(tokens)
+    }
+
+    fn into_tokens(self) -> Vec<Token> {
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Detokenize, Tokenizable};
+    use super::*;
     use crate::types::{Address, BytesArray, U256};
     use ethabi::{Token, Uint};
     use hex_literal::hex;
 
-    fn output<R: Detokenize>() -> R {
-        unimplemented!()
-    }
+    fn assert_tokenizable<T: SingleTokenize>() {}
+    fn assert_multi_tokenizable<T: MultiTokenize>() {}
 
     #[test]
     #[ignore]
-    fn should_be_able_to_compile() {
-        let _tokens: Vec<Token> = output();
-        let _uint: U256 = output();
-        let _address: Address = output();
-        let _string: String = output();
-        let _bool: bool = output();
-        let _bytes: Vec<u8> = output();
-        let _bytes_array: BytesArray = output();
+    fn should_compile() {
+        assert_tokenizable::<Vec<Token>>();
+        assert_tokenizable::<U256>();
+        assert_tokenizable::<Address>();
+        assert_tokenizable::<String>();
+        assert_tokenizable::<bool>();
+        assert_tokenizable::<Vec<u8>>();
+        assert_tokenizable::<BytesArray>();
+        assert_tokenizable::<(U256, bool)>();
+        assert_multi_tokenizable::<(U256, bool)>();
+        assert_tokenizable::<Vec<U256>>();
+        assert_tokenizable::<[U256; 4]>();
+        assert_tokenizable::<Vec<[[u8; 1]; 64]>>();
+        assert_tokenizable::<(Vec<Vec<u8>>, [U256; 4], Vec<U256>, U256)>();
+        assert_tokenizable::<(i8, i16, i32, i64, i128)>();
+        assert_multi_tokenizable::<(i8, i16, i32, i64, i128)>();
+        assert_tokenizable::<(u16, u32, u64, u128)>();
+        assert_multi_tokenizable::<(u16, u32, u64, u128)>();
+        assert_multi_tokenizable::<Vec<Token>>();
+    }
 
-        let _pair: (U256, bool) = output();
-        let _vec: Vec<U256> = output();
-        let _array: [U256; 4] = output();
-        let _bytes: Vec<[[u8; 1]; 64]> = output();
-
-        let _mixed: (Vec<Vec<u8>>, [U256; 4], Vec<U256>, U256) = output();
-
-        let _ints: (i8, i16, i32, i64, i128) = output();
-        let _uints: (u16, u32, u64, u128) = output();
+    #[test]
+    fn nested_tuples() {
+        type T = (u8, (u16, (u32, u64)));
+        let tuple: T = (0, (1, (2, 3)));
+        let expected = vec![
+            Token::Uint(0.into()),
+            Token::Tuple(vec![
+                Token::Uint(1.into()),
+                Token::Tuple(vec![Token::Uint(2.into()), Token::Uint(3.into())]),
+            ]),
+        ];
+        assert_eq!(tuple.into_token(), Token::Tuple(expected.clone()));
+        assert_eq!(T::from_token(Token::Tuple(expected.clone())).unwrap(), tuple);
+        assert_eq!(tuple.into_tokens(), expected);
+        assert_eq!(T::from_tokens(expected).unwrap(), tuple);
     }
 
     #[test]
     fn should_decode_array_of_fixed_bytes() {
         // byte[8][]
-        let tokens = vec![Token::FixedArray(vec![
+        let tokens = Token::FixedArray(vec![
             Token::FixedBytes(hex!("01").into()),
             Token::FixedBytes(hex!("02").into()),
             Token::FixedBytes(hex!("03").into()),
@@ -483,8 +517,8 @@ mod tests {
             Token::FixedBytes(hex!("06").into()),
             Token::FixedBytes(hex!("07").into()),
             Token::FixedBytes(hex!("08").into()),
-        ])];
-        let data: [[u8; 1]; 8] = Detokenize::from_tokens(tokens).unwrap();
+        ]);
+        let data: [[u8; 1]; 8] = SingleTokenize::from_token(tokens).unwrap();
         assert_eq!(data[0][0], 1);
         assert_eq!(data[1][0], 2);
         assert_eq!(data[2][0], 3);
@@ -494,7 +528,7 @@ mod tests {
     #[test]
     fn should_decode_array_of_bytes() {
         let token = Token::Array(vec![Token::Uint(Uint::from(0)), Token::Uint(Uint::from(1))]);
-        let data: BytesArray = Tokenizable::from_token(token).unwrap();
+        let data: BytesArray = SingleTokenize::from_token(token).unwrap();
         assert_eq!(data.0[0], 0);
         assert_eq!(data.0[1], 1);
     }

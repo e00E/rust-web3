@@ -3,7 +3,7 @@
 use crate::{
     api::{Eth, Namespace},
     confirm,
-    contract::tokens::{Detokenize, Tokenize},
+    contract::tokens::MultiTokenize,
     futures::Future,
     types::{
         Address, BlockId, Bytes, CallRequest, FilterBuilder, TransactionCondition, TransactionReceipt,
@@ -118,7 +118,7 @@ impl<T: Transport> Contract<T> {
     /// Execute a contract function
     pub async fn call<P>(&self, func: &str, params: P, from: Address, options: Options) -> Result<H256>
     where
-        P: Tokenize,
+        P: MultiTokenize,
     {
         let data = self.abi.function(func)?.encode_input(&params.into_tokens())?;
         let Options {
@@ -147,7 +147,7 @@ impl<T: Transport> Contract<T> {
     pub async fn call_with_confirmations(
         &self,
         func: &str,
-        params: impl Tokenize,
+        params: impl MultiTokenize,
         from: Address,
         options: Options,
         confirmations: usize,
@@ -183,7 +183,7 @@ impl<T: Transport> Contract<T> {
     /// Estimate gas required for this function call.
     pub async fn estimate_gas<P>(&self, func: &str, params: P, from: Address, options: Options) -> Result<U256>
     where
-        P: Tokenize,
+        P: MultiTokenize,
     {
         let data = self.abi.function(func)?.encode_input(&params.into_tokens())?;
         self.eth
@@ -212,10 +212,10 @@ impl<T: Transport> Contract<T> {
         block: B,
     ) -> impl Future<Output = Result<R>> + '_
     where
-        R: Detokenize,
+        R: MultiTokenize,
         A: Into<Option<Address>>,
         B: Into<Option<BlockId>>,
-        P: Tokenize,
+        P: MultiTokenize,
     {
         let result = self
             .abi
@@ -252,12 +252,12 @@ impl<T: Transport> Contract<T> {
     /// Find events matching the topics.
     pub async fn events<A, B, C, R>(&self, event: &str, topic0: A, topic1: B, topic2: C) -> Result<Vec<R>>
     where
-        A: Tokenize,
-        B: Tokenize,
-        C: Tokenize,
-        R: Detokenize,
+        A: MultiTokenize,
+        B: MultiTokenize,
+        C: MultiTokenize,
+        R: MultiTokenize,
     {
-        fn to_topic<A: Tokenize>(x: A) -> ethabi::Topic<ethabi::Token> {
+        fn to_topic<A: MultiTokenize>(x: A) -> ethabi::Topic<ethabi::Token> {
             let tokens = x.into_tokens();
             if tokens.is_empty() {
                 ethabi::Topic::Any
@@ -308,7 +308,7 @@ mod contract_signing {
         pub async fn signed_call_with_confirmations(
             &self,
             func: &str,
-            params: impl Tokenize,
+            params: impl MultiTokenize,
             options: Options,
             confirmations: usize,
             key: impl signing::Key,
@@ -370,7 +370,7 @@ mod tests {
         let mut transport = TestTransport::default();
         transport.set_response(rpc::Value::String("0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000c48656c6c6f20576f726c64210000000000000000000000000000000000000000".into()));
 
-        let result: String = {
+        let result: (String,) = {
             let token = contract(&transport);
 
             // when
@@ -393,7 +393,7 @@ mod tests {
             ],
         );
         transport.assert_no_more_requests();
-        assert_eq!(result, "Hello World!".to_owned());
+        assert_eq!(result.0, "Hello World!".to_owned());
     }
 
     #[test]
@@ -402,7 +402,7 @@ mod tests {
         let mut transport = TestTransport::default();
         transport.set_response(rpc::Value::String("0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000c48656c6c6f20576f726c64210000000000000000000000000000000000000000".into()));
 
-        let result: String = {
+        let result: (String,) = {
             let token = contract(&transport);
 
             // when
@@ -425,7 +425,7 @@ mod tests {
             ],
         );
         transport.assert_no_more_requests();
-        assert_eq!(result, "Hello World!".to_owned());
+        assert_eq!(result.0, "Hello World!".to_owned());
     }
 
     #[test]
@@ -434,7 +434,7 @@ mod tests {
         let mut transport = TestTransport::default();
         transport.set_response(rpc::Value::String("0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000c48656c6c6f20576f726c64210000000000000000000000000000000000000000".into()));
 
-        let result: String = {
+        let result: (String,) = {
             let token = contract(&transport);
 
             // when
@@ -453,7 +453,7 @@ mod tests {
         // then
         transport.assert_request("eth_call", &["{\"data\":\"0x06fdde03\",\"from\":\"0x0000000000000000000000000000000000000005\",\"gasPrice\":\"0x989680\",\"to\":\"0x0000000000000000000000000000000000000001\"}".into(), "\"latest\"".into()]);
         transport.assert_no_more_requests();
-        assert_eq!(result, "Hello World!".to_owned());
+        assert_eq!(result.0, "Hello World!".to_owned());
     }
 
     #[test]
@@ -504,13 +504,13 @@ mod tests {
             "0x0000000000000000000000000000000000000000000000000000000000000020".into(),
         ));
 
-        let result: U256 = {
+        let result: (U256,) = {
             let token = contract(&transport);
 
             // when
             futures::executor::block_on(token.query(
                 "balanceOf",
-                Address::from_low_u64_be(5),
+                (Address::from_low_u64_be(5),),
                 None,
                 Options::default(),
                 None,
@@ -521,6 +521,6 @@ mod tests {
         // then
         transport.assert_request("eth_call", &["{\"data\":\"0x70a082310000000000000000000000000000000000000000000000000000000000000005\",\"to\":\"0x0000000000000000000000000000000000000001\"}".into(), "\"latest\"".into()]);
         transport.assert_no_more_requests();
-        assert_eq!(result, 0x20.into());
+        assert_eq!(result.0, 0x20.into());
     }
 }

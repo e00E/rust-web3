@@ -3,7 +3,7 @@
 use crate::{
     api::{Eth, Namespace},
     confirm,
-    contract::{tokens::Tokenize, Contract, Options},
+    contract::{tokens::MultiTokenize, Contract, Options},
     error,
     types::{Address, Bytes, TransactionReceipt, TransactionRequest},
     Transport,
@@ -46,7 +46,7 @@ impl<T: Transport> Builder<T> {
     /// Execute deployment passing code and contructor parameters.
     pub async fn execute<P, V>(self, code: V, params: P, from: Address) -> Result<Contract<T>, Error>
     where
-        P: Tokenize,
+        P: MultiTokenize,
         V: AsRef<str>,
     {
         let transport = self.eth.transport().clone();
@@ -72,7 +72,7 @@ impl<T: Transport> Builder<T> {
         password: &str,
     ) -> Result<Contract<T>, Error>
     where
-        P: Tokenize,
+        P: MultiTokenize,
         V: AsRef<str>,
     {
         let transport = self.eth.transport().clone();
@@ -102,7 +102,7 @@ impl<T: Transport> Builder<T> {
         send: impl FnOnce(TransactionRequest) -> Ft,
     ) -> Result<Contract<T>, Error>
     where
-        P: Tokenize,
+        P: MultiTokenize,
         V: AsRef<str>,
         Ft: Future<Output = error::Result<TransactionReceipt>>,
     {
